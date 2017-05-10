@@ -1,3 +1,27 @@
+V5.0.8 (May 1st, 2017):
+▔▔▔▔▔▔▔▔▔▔▔
+Manager App:
+ • UPDATED: Detects and notifies on installation issues
+ • FIXED: Small bugs and optimization;  Quieting of logs
+
+Automation App:
+ • FIXED: Quieting of logs;  small bugs and optimizations
+ 
+V5.0.7 (April 25th, 2017):
+▔▔▔▔▔▔▔▔▔▔▔
+Manager App:
+ • FIXED: Bugs and made various stability improvements.
+
+V5.0.5 (April 20th, 2017):
+▔▔▔▔▔▔▔▔▔▔▔
+Manager App:
+ • UPDATED: Made a change to token distribution (based on Nest's suggestion).
+ • FIXED: Constant overwriting of custom device names.
+
+Automation App:
+ • FIXED: Issues with notifications that was causing exceptions.
+ • FIXED: Issues with duplicate notifications when Nest Mode automation is enabled.
+
 V5.0.4 (April 11th, 2017):
 ▔▔▔▔▔▔▔▔▔▔▔
 Manager App:

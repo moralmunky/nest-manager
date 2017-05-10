@@ -27,8 +27,8 @@ definition(
 	appSetting "devOpt"
 }
 
-def appVersion() { "5.0.2" }
-def appVerDate() { "4-11-2017" }
+def appVersion() { "5.0.4" }
+def appVerDate() { "4-29-2017" }
 
 preferences {
 	//startPage
@@ -316,18 +316,18 @@ void finishFixState(migrate=false) {
 		if(atomicState?.resetAllData || migrate) {
 			def tstat = settings?.schMotTstat
 			if(tstat) {
-LogAction("finishFixState found tstat", "info", true)
+				LogAction("finishFixState found tstat", "info", true)
 				getTstatCapabilities(tstat, schMotPrefix())
 				if(!getMyLockId()) {
 					setMyLockId(app.id)
 				}
 				if(settings?.schMotRemoteSensor) {
-LogAction("finishFixState found remote sensor", "info", true)
+					LogAction("finishFixState found remote sensor", "info", true)
 					if( parent?.remSenLock(tstat?.deviceNetworkId, getMyLockId()) ) {  // lock new ID
 						atomicState?.remSenTstat = tstat?.deviceNetworkId
 					}
 					if(isRemSenConfigured() && settings?.remSensorDay) {
-LogAction("finishFixState found remote sensor configured", "info", true)
+						LogAction("finishFixState found remote sensor configured", "info", true)
 						if(settings?.vthermostat != null) { parent?.addRemoveVthermostat(tstat.deviceNetworkId, vthermostat, getMyLockId()) }
 					}
 				}
@@ -396,6 +396,13 @@ def mainAutoPage(params) {
 						nDesc += (nModeDelay && nModeDelayVal) ? "\n • Change Delay: (${getEnumValue(longTimeSecEnum(), nModeDelayVal)})" : ""
 						nDesc += (settings?."${getAutoType()}Modes" || settings?."${getAutoType()}Days" || (settings?."${getAutoType()}StartTime" && settings?."${getAutoType()}StopTime")) ?
 								"\n • Evaluation Allowed: (${autoScheduleOk(getAutoType()) ? "ON" : "OFF"})" : ""
+						if(isNestModesConfigured()) {
+							nDesc += "\n • Set Nest Thermostats to ECO ${nModeSetEco ? "ON" : "OFF"}"
+							if(parent?.settings?.cameras) {
+								nDesc += "\n • Set Nest Cams On when Away ${nModeCamOnAway ? "ON" : "OFF"}"
+								nDesc += "\n • Set Nest Cams Off when Home ${nModeCamOffHome ? "ON" : "OFF"}"
+							}
+						}
 						nDesc += (nModePresSensor || nModeSwitch) || (!nModePresSensor && !nModeSwitch && (nModeAwayModes && nModeHomeModes)) ? "\n\nTap to modify" : ""
 						def nModeDesc = isNestModesConfigured() ? "${nDesc}" : null
 						href "nestModePresPage", title: "Nest Mode Automation Config", description: nModeDesc ?: "Tap to configure", state: (nModeDesc ? "complete" : null), image: getAppImg("mode_automation_icon.png")
@@ -424,7 +431,9 @@ def mainAutoPage(params) {
 					setAutomationStatus(settings?.disableAutomationreq)
 				}
 				input ("showDebug", "bool", title: "Debug Option", description: "Show Automation Logs in the IDE?", required: false, defaultValue: false, submitOnChange: true, image: getAppImg("debug_icon.png"))
-				atomicState?.showDebug = showDebug
+				if(showDebug) {
+					input (name: "advAppDebug", type: "bool", title: "Show Verbose Logs?", required: false, defaultValue: false, submitOnChange: true, image: getAppImg("list_icon.png"))
+				}
 			}
 			section("Automation Name:") {
 //				if(autoType == "watchDog") {
@@ -539,7 +548,7 @@ def backupConfigToFirebase() {
 }
 
 void settingUpdate(name, value, type=null) {
-	LogAction("settingUpdate($name, $value, $type)...", "trace", false)
+	LogTrace("settingUpdate($name, $value, $type)...")
 	try {
 		//if(name && value && type) {
 		if(name && type) {
@@ -629,7 +638,7 @@ def initAutoApp() {
 					])
 					numact += 1
 				}
-				//LogAction("initAutoApp: [Schedule: $scd | sLbl: $sLbl | act: $act | newscd: $newscd]", "info", true)
+				LogTrace("initAutoApp: [Schedule: $scd | sLbl: $sLbl | act: $act | newscd: $newscd]")
 				atomicState."sched${cnt}restrictions" = newscd
 				atomicState."schedule${cnt}SwEnabled" = (newscd?.s1 || newscd?.s0) ? true : false
 				atomicState."schedule${cnt}PresEnabled" = (newscd?.p1 || newscd?.p0) ? true : false
@@ -708,7 +717,7 @@ def uninstAutomationApp() {
 def getCurAppLbl() { return app?.label?.toString() }
 
 def getAutoTypeLabel() {
-	//LogAction("getAutoTypeLabel:","trace", true)
+	LogTrace("getAutoTypeLabel()")
 	def type = atomicState?.automationType
 	def appLbl = getCurAppLbl()
 	def newName = appName() == "${appLabel()}" ? "NST Automations" : "${appName()}"
@@ -831,7 +840,7 @@ def getAutomationsInstalled() {
 			list.push(aType)
 			break
 	}
-	//LogAction("getAutomationsInstalled List: $list", "debug", false)
+	LogTrace("getAutomationsInstalled List: $list")
 	return list
 }
 
@@ -861,7 +870,7 @@ def subscribeToEvents() {
 				foundTstats = tstats?.collect { dni ->
 					def d1 = parent.getThermostatDevice(dni)
 					if(d1) {
-						LogAction("Found: ${d1?.displayName} with (Id: ${dni?.key})", "debug", true)
+						LogAction("Found: ${d1?.displayName} with (Id: ${dni?.key})", "debug", false)
 
 						subscribe(d1, "nestThermostatMode", automationGenericEvt)
 						subscribe(d1, "presence", automationGenericEvt)
@@ -1052,9 +1061,8 @@ def subscribeToEvents() {
 			foundTstats = tstats?.collect { dni ->
 				def d1 = parent.getThermostatDevice(dni)
 				if(d1) {
-					LogAction("Found: ${d1?.displayName} with (Id: ${dni?.key})", "debug", true)
+					LogAction("Found: ${d1?.displayName} with (Id: ${dni?.key})", "debug", false)
 
-					// temperature is for DEBUG
 					subscribe(d1, "temperature", automationGenericEvt)
 					subscribe(d1, "safetyTempExceeded", automationSafetyTempEvt)
 					subscribe(d1, "nestThermostatMode", automationGenericEvt)
@@ -1090,8 +1098,8 @@ def scheduler() {
 }
 
 def heartbeatAutomation() {
-	LogAction("Heartbeat: heartbeatAutomation()", "trace", false)
 	def autoType = getAutoType()
+	LogTrace("Heartbeat ${autoType}: heartbeatAutomation()")
 	def val = 900
 	if(autoType == "schMot") {
 		val = 220
@@ -1134,7 +1142,7 @@ def scheduleAutomationEval(schedtime = 20) {
 def getLastAutomationSchedSec() { return !atomicState?.lastAutomationSchedDt ? 100000 : GetTimeDiffSeconds(atomicState?.lastAutomationSchedDt, null, "getLastAutomationSchedSec").toInteger() }
 
 def runAutomationEval() {
-	LogAction("runAutomationEval", "trace", false)
+	LogTrace("runAutomationEval")
 	def autoType = getAutoType()
 	switch(autoType) {
 		case "nMode":
@@ -1272,7 +1280,7 @@ def watchDogCheck() {
 					def exceeded = d1?.currentValue("safetyTempExceeded")?.toString()
 					if(exceeded == "true") {
 						watchDogAlarmActions(d1.displayName, dni, "temp")
-						LogAction("watchDogCheck: | Thermostat: ${d1?.displayName} Temp Exceeded: ${exceeded}", "trace", true)
+						LogAction("watchDogCheck: | Thermostat: ${d1?.displayName} Temp Exceeded: ${exceeded}", "warn", true)
 					} else {
 
 // This is allowing for warning if Nest has problem of system coming out of ECO while away
@@ -1284,7 +1292,7 @@ def watchDogCheck() {
 							if(!(curMode in ["eco", "off" ])) {
 								watchDogAlarmActions(d1.displayName, dni, "eco")
 								def pres = d1?.currentPresence?.toString()
-								LogAction("watchDogCheck: | Thermostat: ${d1?.displayName} is away and thermostat is not in ECO (${curMode}) (${pres})", "trace", true)
+								LogAction("watchDogCheck: | Thermostat: ${d1?.displayName} is away and thermostat is not in ECO (${curMode}) (${pres})", "warn", true)
 							}
 						}
 					}
@@ -1317,7 +1325,7 @@ def watchDogAlarmActions(dev, dni, actType) {
 			break
 	}
 	if(getLastWatDogSafetyAlertDtSec(dni) > getWatDogRepeatMsgDelayVal()) {
-		LogAction("watchDogAlarmActions() | ${evtNotifMsg}", "trace", true)
+		LogAction("watchDogAlarmActions() | ${evtNotifMsg}", "warn", true)
 
 		if(allowNotif) {
 			sendEventPushNotifications(evtNotifMsg, "Warning", pName)
@@ -1587,7 +1595,7 @@ def getRemSenModeOk() {
 */
 
 private remSenCheck() {
-	LogAction("remSenCheck", "trace", false)
+	LogTrace("remSenCheck")
 	if(atomicState?.disableAutomation) { return }
 	try {
 		def remSenTstat = settings?.schMotTstat
@@ -1749,7 +1757,7 @@ private remSenCheck() {
 						}
 
 					} else {
-						LogAction("Remote Sensor: NO CHANGE TO COOL - CoolSetpoint is (${curCoolSetpoint}°${getTemperatureScale()}) ", "info", true)
+						LogAction("Remote Sensor: NO CHANGE TO COOL - CoolSetpoint is (${curCoolSetpoint}°${getTemperatureScale()}) ", "info", false)
 					}
 				}
 			}
@@ -1808,7 +1816,7 @@ private remSenCheck() {
 							return // let all this take effect
 						}
 					} else {
-						LogAction("Remote Sensor: NO CHANGE TO HEAT - HeatSetpoint is already (${curHeatSetpoint}°${getTemperatureScale()})", "info", true)
+						LogAction("Remote Sensor: NO CHANGE TO HEAT - HeatSetpoint is already (${curHeatSetpoint}°${getTemperatureScale()})", "info", false)
 					}
 				}
 			}
@@ -2005,7 +2013,7 @@ def disableOverrideTemps() {
 }
 
 def remSenTempUpdate(temp, mode) {
-	LogAction("remSenTempUpdate(${temp}, ${mode})", "trace", true)
+	LogAction("remSenTempUpdate(${temp}, ${mode})", "trace", false)
 
 	def res = false
 	if(atomicState?.disableAutomation) { return res }
@@ -2125,7 +2133,7 @@ def getFanSwitchesSpdChk() {
 }
 
 def fanCtrlCheck() {
-	//LogAction("FanControl Event | Fan Switch Check", "trace", false)
+	LogAction("FanControl Event | Fan Switch Check", "trace", false)
 	try {
 		def fanCtrlTstat = schMotTstat
 
@@ -2561,7 +2569,7 @@ def humCtrlCheck() {
 		def maxHum = getMaxHumidity(curExtTemp)
 		def schedOk = humCtrlScheduleOk()
 
-		LogAction("humCtrlCheck: ( Humidity: (${curHum}) | External Temp: (${curExtTemp}) | Max Humidity: (${maxHum}) | HvacMode: (${hvacMode}) | OperatingState: (${curTstatOperState}) )", "info", true)
+		LogAction("humCtrlCheck: ( Humidity: (${curHum}) | External Temp: (${curExtTemp}) | Max Humidity: (${maxHum}) | HvacMode: (${hvacMode}) | OperatingState: (${curTstatOperState}) )", "info", false)
 
 		if(atomicState?.haveRunHumidifier == null) { atomicState.haveRunHumidifier = false }
 		def savedHaveRun = atomicState?.haveRunHumidifier
@@ -2605,7 +2613,7 @@ def humCtrlCheck() {
 		}
 
 		def turnOn = (humOn && validOperating && validHvac && schedOk) ?: false
-		LogAction("humCtrlCheck: turnOn: ${turnOn} | humOn: ${humOn} | validOperating: ${validOperating} | validHvac: ${validHvac} | schedOk: ${schedOk} | savedHaveRun: ${savedHaveRun}", "info", true)
+		LogAction("humCtrlCheck: turnOn: ${turnOn} | humOn: ${humOn} | validOperating: ${validOperating} | validHvac: ${validHvac} | schedOk: ${schedOk} | savedHaveRun: ${savedHaveRun}", "info", false)
 
 		settings?.humCtrlSwitches?.each { sw ->
 			def swOn = (sw?.currentSwitch.toString() == "on") ? true : false
@@ -2656,7 +2664,7 @@ def isExtTmpConfigured() {
 }
 
 def getExtConditions( doEvent = false ) {
-	//LogAction("getExtConditions", "trace", true)
+	LogTrace("getExtConditions")
 	if(atomicState?.NeedwUpd && parent?.getWeatherDeviceInst()) {
 		def cur = parent?.getWData()
 		def weather = parent.getWeatherDevice()
@@ -3035,8 +3043,8 @@ def extTmpTempCheck(cTimeOut = false) {
 				if(timeOut) { LogAction("extTmpTempCheck: Skipping: active timeout", "info", true) }
 				else if(!safetyOk) { LogAction("extTmpTempCheck: Skipping: Safety Temps Exceeded", "info", true) }
 				else if(!schedOk) { LogAction("extTmpTempCheck: Skipping: Schedule Restrictions", "info", true) }
-				else if(!tempWithinThreshold) { LogAction("extTmpTempCheck: Exterior temperatures not in range", "info", true) }
-				else if(modeEco) { LogAction("extTmpTempCheck: Skipping: in ECO mode extTmpTstatOffRequested: (${atomicState?.extTmpTstatOffRequested})", "info", true) }
+				else if(!tempWithinThreshold) { LogAction("extTmpTempCheck: Exterior temperatures not in range", "info", false) }
+				else if(modeEco) { LogAction("extTmpTempCheck: Skipping: in ECO mode extTmpTstatOffRequested: (${atomicState?.extTmpTstatOffRequested})", "info", false) }
 			}
 			storeExecutionHistory((now() - execTime), "extTmpTempCheck")
 		}
@@ -3082,7 +3090,7 @@ def extTmpDpOrTempEvt(type) {
 			LogAction("${type} | External Temp Check scheduled for (${timeVal.valLabel}) HVAC mode: ${curMode}", "info", true)
 			scheduleAutomationEval(val)
 		} else {
-			LogAction("${type}: Skipping no state change | tempWithinThreshold: ${tempWithinThreshold}", "info", true)
+			LogAction("${type}: Skipping no state change | tempWithinThreshold: ${tempWithinThreshold}", "info", false)
 		}
 	}
 }
@@ -3321,7 +3329,7 @@ def conWatCheck(cTimeOut = false) {
 				else if(!schedOk) { LogAction("conWatCheck: Skipping: Schedule Restrictions", "info", true) }
 				else if(!safetyOk) { LogAction("conWatCheck: Skipping: Safety Temps Exceeded", "warn", true) }
 				else if(contactsOk) { LogAction("conWatCheck: Contacts are closed", "info", true) }
-				else if(modeEco) { LogAction("conWatTempCheck: Skipping: in ECO mode conWatTstatOffRequested: (${atomicState?.conWatTstatOffRequested})", "info", true) }
+				else if(modeEco) { LogAction("conWatTempCheck: Skipping: in ECO mode conWatTstatOffRequested: (${atomicState?.conWatTstatOffRequested})", "info", false) }
 			}
 			storeExecutionHistory((now() - execTime), "conWatCheck")
 		}
@@ -3355,12 +3363,12 @@ def conWatContactEvt(evt) {
 		}
 		storeLastEventData(evt)
 		if(canSched) {
-			LogAction("conWatContactEvt: Contact Check scheduled for (${timeVal?.valLabel})", "info", true)
+			LogAction("conWatContactEvt: Contact Check scheduled for (${timeVal?.valLabel})", "info", false)
 			def val = timeVal?.valNum > 20 ? timeVal?.valNum : 20
 			val = timeVal?.valNum < 60 ? timeVal?.valNum : 60
 			scheduleAutomationEval(val)
 		} else {
-			LogAction("conWatContactEvt: Skipping Event", "info", true)
+			LogAction("conWatContactEvt: Skipping Event", "info", false)
 		}
 	}
 }
@@ -3573,7 +3581,7 @@ def leakWatSensorEvt(evt) {
 
 		storeLastEventData(evt)
 		if(canSched) {
-			LogAction("leakWatSensorEvt: Leak Check scheduled (${timeVal?.valLabel})", "info", true)
+			LogAction("leakWatSensorEvt: Leak Check scheduled (${timeVal?.valLabel})", "info", false)
 			def val = timeVal?.valNum > 20 ? timeVal?.valNum : 20
 			val = timeVal?.valNum < 60 ? timeVal?.valNum : 60
 			scheduleAutomationEval(val)
@@ -3697,7 +3705,7 @@ def nModeGenericEvt(evt) {
 	if(nModeDelay) {
 		def delay = nModeDelayVal.toInteger()
 		if(delay > 20) {
-			LogAction("Event | A Check is scheduled (${getEnumValue(longTimeSecEnum(), nModeDelayVal)})", "info", true)
+			LogAction("Event | A Check is scheduled (${getEnumValue(longTimeSecEnum(), nModeDelayVal)})", "info", false)
 			scheduleAutomationEval(delay)
 		} else { scheduleAutomationEval() }
 	} else {
@@ -3870,7 +3878,7 @@ def checkNestMode() {
 				if(nModeCamOffHome) { adjustCameras(false) }
 			}
 			else {
-				LogAction("checkNestMode: No Changes | ${nModePresSensor ? "isPresenceHome: ${isPresenceHome(nModePresSensor)} | " : ""}ST-Mode: ($curStMode) | NestModeAway: ($nestModeAway) | Away: ($away) | Home: ($home)", "info", true)
+				LogAction("checkNestMode: No Changes | ${nModePresSensor ? "isPresenceHome: ${isPresenceHome(nModePresSensor)} | " : ""}ST-Mode: ($curStMode) | NestModeAway: ($nestModeAway) | Away: ($away) | Home: ($home)", "info", false)
 			}
 			if(didsomething) {
 				scheduleAutomationEval(90)
@@ -4056,12 +4064,12 @@ def getCurrentSchedule() {
 	}
 	if(ccnt > schedList?.size()) { noSched = true }
 	else { mySched = ccnt }
-	//LogAction("getCurrentSchedule: mySched: $mySched noSched: $noSched ccnt: $ccnt res1: $res1", "trace", false)
+	LogTrace("getCurrentSchedule: mySched: $mySched noSched: $noSched ccnt: $ccnt res1: $res1")
 	return mySched
 }
 
 private checkRestriction(cnt) {
-	//	LogAction("checkRestriction:( $cnt )", "trace", false)
+	//LogTrace("checkRestriction:( $cnt )")
 	def sLbl = "schMot_${cnt}_"
 	def restriction
 	def act = settings["${sLbl}SchedActive"]
@@ -4108,10 +4116,10 @@ private checkRestriction(cnt) {
 				}
 			}
 		}
+		LogTrace("checkRestriction:( $cnt ) restriction: $restriction")
 	} else {
 		restriction = "an inactive schedule"
 	}
-	//LogAction("checkRestriction:( $cnt ) restriction: $restriction", "trace", false)
 	return restriction
 }
 
@@ -4298,7 +4306,7 @@ def isTimeBetween(start, end, now, tz) {
 */
 
 def checkOnMotion(mySched) {
-	//LogTrace("checkOnMotion($mySched)")
+	LogTrace("checkOnMotion($mySched)")
 	def sLbl = "schMot_${mySched}_"
 
 	if(settings["${sLbl}Motion"] && atomicState?."${sLbl}MotionActiveDt") {
@@ -4375,7 +4383,7 @@ def setTstatTempCheck() {
 		def samemode = lastMode == curMode ? true : false
 
 		def mySched = getCurrentSchedule()
-		log.debug "Tstat Temp Check | Current Schedule: ${mySched ?: "None Active"}"
+		LogAction("setTstatTempCheck | Current Schedule: ${mySched ?: "None Active"}", "debug", true)
 		def noSched = (mySched == null) ? true : false
 
 		def previousSched = atomicState?.lastSched
@@ -5380,7 +5388,7 @@ def showUpdateSchedule(sNum=null,hideStr=null) {
 
 def editSchedule(schedData) {
 	def cnt = schedData?.secData?.scd
-	LogAction("editSchedule (${schedData?.secData})", "trace", false)
+	LogTrace("editSchedule (${schedData?.secData})")
 
 	def sLbl = "schMot_${cnt}_"
 	def canHeat = atomicState?.schMotTstatCanHeat
@@ -6040,7 +6048,7 @@ def voiceNotifString(phrase, pName) {
 }
 
 def getNotificationOptionsConf(pName) {
-	LogAction("getNotificationOptionsConf pName: $pName", "trace", false)
+	LogTrace("getNotificationOptionsConf pName: $pName")
 	def res = (settings?."${pName}NotificationsOn" &&
 			(getRecipientDesc(pName) ||
 			(settings?."${pName}AllowSpeechNotif" && (settings?."${pName}SpeechDevices" || settings?."${pName}SpeechMediaPlayer")) ||
@@ -6050,7 +6058,7 @@ def getNotificationOptionsConf(pName) {
 }
 
 def getNotifConfigDesc(pName) {
-	LogAction("getNotifConfigDesc pName: $pName", "trace", false)
+	LogTrace("getNotifConfigDesc pName: $pName")
 	def str = ""
 	if(settings?."${pName}NotificationsOn") {
 		str += ( getRecipientDesc(pName) || (settings?."${pName}AllowSpeechNotif" && (settings?."${pName}SpeechDevices" || settings?."${pName}SpeechMediaPlayer"))) ?
@@ -6238,10 +6246,10 @@ def autoScheduleOk(autoType) {
 def sendNofificationMsg(msg, msgType, recips = null, sms = null, push = null) {
 	LogAction("sendNofificationMsg($msg, $msgType, $recips, $sms, $push)", "trace", false)
 	if(recips || sms || push) {
-		parent?.sendMsg(msgType, msg, recips, sms, push)
+		parent?.sendMsg(msgType, msg, true, recips, sms, push)
 		//LogAction("Send Push Notification to $recips", "info", true)
 	} else {
-		parent?.sendMsg(msgType, msg)
+		parent?.sendMsg(msgType, msg, true)
 	}
 }
 
@@ -6250,7 +6258,7 @@ def sendNofificationMsg(msg, msgType, recips = null, sms = null, push = null) {
 *************************************************************************************************/
 
 def sendEventPushNotifications(message, type, pName) {
-	//LogTrace("sendEventPushNotifications($message, $type, $pName)")
+	LogTrace("sendEventPushNotifications($message, $type, $pName)")
 	if(settings["${pName}_Alert_1_Send_Push"] || settings["${pName}_Alert_2_Send_Push"]) {
 //TODO this portion is never reached
 		if(settings["${pName}_Alert_1_CustomPushMessage"]) {
@@ -7149,7 +7157,7 @@ def GetTimeDiffSeconds(strtDate, stpDate=null, methName=null) {
 		def start = Date.parse("E MMM dd HH:mm:ss z yyyy", formatDt(startDt)).getTime()
 		def stop = Date.parse("E MMM dd HH:mm:ss z yyyy", stopVal).getTime()
 		def diff = (int) (long) (stop - start) / 1000
-		//LogTrace("[GetTimeDiffSeconds] Results for '$methName': ($diff seconds)")
+		LogTrace("[GetTimeDiffSeconds] Results for '$methName': ($diff seconds)")
 		return diff
 	} else { return null }
 }
@@ -7257,7 +7265,7 @@ def toQueryString(Map m) {
 |									LOGGING AND Diagnostic										|
 *************************************************************************************************/
 def LogTrace(msg, logSrc=null) {
-	def trOn = advAppDebug ? true : false
+	def trOn = (showDebug && advAppDebug) ? true : false
 	if(trOn) {
 		def theLogSrc = (logSrc == null) ? (parent ? "Automation" : "NestManager") : logSrc
 		Logger(msg, "trace", theLogSrc)
@@ -7265,7 +7273,7 @@ def LogTrace(msg, logSrc=null) {
 }
 
 def LogAction(msg, type="debug", showAlways=false, logSrc=null) {
-	def isDbg = parent ? ((atomicState?.showDebug || showDebug) ? true : false) : (appDebug ? true : false)
+	def isDbg = parent ? (showDebug ? true : false) : (appDebug ? true : false)
 	def theLogSrc = (logSrc == null) ? (parent ? "Automation" : "NestManager") : logSrc
 	if(showAlways) { Logger(msg, type, theLogSrc) }
 	else if(isDbg && !showAlways) { Logger(msg, type, theLogSrc) }
@@ -7288,7 +7296,7 @@ def Logger(msg, type, logSrc=null) {
 				log.info "||| ${themsg}"
 				break
 			case "trace":
-				log.trace "|| ${themsg}"
+				log.trace "| ${themsg}"
 				break
 			case "error":
 				log.error "| ${themsg}"
